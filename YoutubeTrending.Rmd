@@ -1,0 +1,397 @@
+---
+title: "YouTube Trending Report"
+author: "Danping Liu"
+date: "12/3/2020"
+output:
+  pdf_document: 
+    latex_engine : xelatex
+---
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE, cache = FALSE)
+
+pacman::p_load(
+tidyverse,
+rjson,
+lubridate,
+knitr, 
+kableExtra,
+GGally,
+lme4,
+arm,
+performance,
+sjPlot,
+report,
+tinytext
+)
+```
+# Abstract
+YouTube is one of the most visited websites. There are millions of users watching YouTube videos every day. In this project, I take a look into the videos on different country's daily trending and build a mixed effect logistic model to predict if a first shown trending video could trend for more than one day. From analyzing the model, I found that traveling or events videos and videos on United Kingdom's trending are most likely to trend longer. 
+
+
+# Introduction
+The dataset I am using is [YouTube Trending data by Mitchell J on Kaggle](https://www.kaggle.com/datasnaek/youtube-new). This dataset contains videos' data such as view count, likes count, and comment count on 10 countries' trending from November 14, 2017 to June 14, 2018. Most videos could only be on trending once, I would like to know that given the video's first trend day's data, is this video going to trend again, or keep trending. 
+
+
+# Method 
+
+## Data Cleaning
+The original data is stored in different countries, then I integrate them into one. There are 375942 observations and 18 variables in total, each row contains a video's data from a country's trending rank on a specific day. 
+```{r data cleaning, echo = FALSE, warning = FALSE, message = FALSE}
+setwd("~/Downloads/MSSP/Trinity Project/MA678_YouTube_Trending_Project")
+
+# Import data
+CAcat <- fromJSON(file="data/CA_category_id.json")
+CAvid <- read.csv("data/CAvideos.csv", header=TRUE)
+
+DEcat <- fromJSON(file="data/DE_category_id.json")
+DEvid <- read.csv("data/DEvideos.csv", header=TRUE)
+
+FRcat <- fromJSON(file="data/FR_category_id.json")
+FRvid <- read.csv("data/FRvideos.csv", header=TRUE)
+
+GBcat <- fromJSON(file="data/GB_category_id.json")
+GBvid <- read.csv("data/GBvideos.csv", header=TRUE)
+
+INcat <- fromJSON(file="data/IN_category_id.json")
+INvid <- read.csv("data/INvideos.csv", header=TRUE)
+
+JPcat <- fromJSON(file="data/JP_category_id.json")
+JPvid <- read.csv("data/JPvideos.csv", header=TRUE)
+
+KRcat <- fromJSON(file="data/KR_category_id.json")
+KRvid <- read.csv("data/KRvideos.csv", header=TRUE)
+
+MXcat <- fromJSON(file="data/MX_category_id.json")
+MXvid <- read.csv("data/MXvideos.csv", header=TRUE)
+
+RUcat <- fromJSON(file="data/RU_category_id.json")
+RUvid <- read.csv("data/RUvideos.csv", header=TRUE)
+
+UScat <- fromJSON(file="data/US_category_id.json")
+USvid <- read.csv("data/USvideos.csv", header=TRUE)
+
+# Add category columns
+CAcatn <- length(CAcat[[3]])
+CAcatIndex <- cbind(1:CAcatn, 1:CAcatn)
+for(i in 1:CAcatn){
+  CAcatIndex[i,1] <- CAcat[[3]][[i]]$id
+  CAcatIndex[i,2] <- CAcat[[3]][[i]]$snippet$title
+}
+CAcatIndex <- as.data.frame(CAcatIndex)
+colnames(CAcatIndex) <- c("category_id","category")
+CAtrend <- merge(x=CAvid, y=CAcatIndex, by="category_id", all.x=TRUE)
+
+DEcatn <- length(DEcat[[3]])
+DEcatIndex <- cbind(1:DEcatn, 1:DEcatn)
+for(i in 1:DEcatn){
+  DEcatIndex[i,1] <- DEcat[[3]][[i]]$id
+  DEcatIndex[i,2] <- DEcat[[3]][[i]]$snippet$title
+}
+DEcatIndex <- as.data.frame(DEcatIndex)
+colnames(DEcatIndex) <- c("category_id","category")
+DEtrend <- merge(x=DEvid, y=DEcatIndex, by="category_id", all.x=TRUE)
+
+FRcatn <- length(FRcat[[3]])
+FRcatIndex <- cbind(1:FRcatn, 1:FRcatn)
+for(i in 1:FRcatn){
+  FRcatIndex[i,1] <- FRcat[[3]][[i]]$id
+  FRcatIndex[i,2] <- FRcat[[3]][[i]]$snippet$title
+}
+FRcatIndex <- as.data.frame(FRcatIndex)
+colnames(FRcatIndex) <- c("category_id","category")
+FRtrend <- merge(x=FRvid, y=FRcatIndex, by="category_id", all.x=TRUE)
+
+GBcatn <- length(GBcat[[3]])
+GBcatIndex <- cbind(1:GBcatn, 1:GBcatn)
+for(i in 1:GBcatn){
+  GBcatIndex[i,1] <- GBcat[[3]][[i]]$id
+  GBcatIndex[i,2] <- GBcat[[3]][[i]]$snippet$title
+}
+GBcatIndex <- as.data.frame(GBcatIndex)
+colnames(GBcatIndex) <- c("category_id","category")
+GBtrend <- merge(x=GBvid, y=GBcatIndex, by="category_id", all.x=TRUE)
+
+INcatn <- length(INcat[[3]])
+INcatIndex <- cbind(1:INcatn, 1:INcatn)
+for(i in 1:INcatn){
+  INcatIndex[i,1] <- INcat[[3]][[i]]$id
+  INcatIndex[i,2] <- INcat[[3]][[i]]$snippet$title
+}
+INcatIndex <- as.data.frame(INcatIndex)
+colnames(INcatIndex) <- c("category_id","category")
+INtrend <- merge(x=INvid, y=INcatIndex, by="category_id", all.x=TRUE)
+
+JPcatn <- length(JPcat[[3]])
+JPcatIndex <- cbind(1:JPcatn, 1:JPcatn)
+for(i in 1:JPcatn){
+  JPcatIndex[i,1] <- JPcat[[3]][[i]]$id
+  JPcatIndex[i,2] <- JPcat[[3]][[i]]$snippet$title
+}
+JPcatIndex <- as.data.frame(JPcatIndex)
+colnames(JPcatIndex) <- c("category_id","category")
+JPtrend <- merge(x=JPvid, y=JPcatIndex, by="category_id", all.x=TRUE)
+
+KRcatn <- length(KRcat[[3]])
+KRcatIndex <- cbind(1:KRcatn, 1:KRcatn)
+for(i in 1:KRcatn){
+  KRcatIndex[i,1] <- KRcat[[3]][[i]]$id
+  KRcatIndex[i,2] <- KRcat[[3]][[i]]$snippet$title
+}
+KRcatIndex <- as.data.frame(KRcatIndex)
+colnames(KRcatIndex) <- c("category_id","category")
+KRtrend <- merge(x=KRvid, y=KRcatIndex, by="category_id", all.x=TRUE)
+
+MXcatn <- length(MXcat[[3]])
+MXcatIndex <- cbind(1:MXcatn, 1:MXcatn)
+for(i in 1:MXcatn){
+  MXcatIndex[i,1] <- MXcat[[3]][[i]]$id
+  MXcatIndex[i,2] <- MXcat[[3]][[i]]$snippet$title
+}
+MXcatIndex <- as.data.frame(MXcatIndex)
+colnames(MXcatIndex) <- c("category_id","category")
+MXtrend <- merge(x=MXvid, y=MXcatIndex, by="category_id", all.x=TRUE)
+
+RUcatn <- length(RUcat[[3]])
+RUcatIndex <- cbind(1:RUcatn, 1:RUcatn)
+for(i in 1:RUcatn){
+  RUcatIndex[i,1] <- RUcat[[3]][[i]]$id
+  RUcatIndex[i,2] <- RUcat[[3]][[i]]$snippet$title
+}
+RUcatIndex <- as.data.frame(RUcatIndex)
+colnames(RUcatIndex) <- c("category_id","category")
+RUtrend <- merge(x=RUvid, y=RUcatIndex, by="category_id", all.x=TRUE)
+
+UScatn <- length(UScat[[3]])
+UScatIndex <- cbind(1:UScatn, 1:UScatn)
+for(i in 1:UScatn){
+  UScatIndex[i,1] <- UScat[[3]][[i]]$id
+  UScatIndex[i,2] <- UScat[[3]][[i]]$snippet$title
+}
+UScatIndex <- as.data.frame(UScatIndex)
+colnames(UScatIndex) <- c("category_id","category")
+UStrend <- merge(x=USvid, y=UScatIndex, by="category_id", all.x=TRUE)
+
+# Merge these data frames into one
+CAtrend$country <- "Canada"
+DEtrend$country <- "Germany"
+FRtrend$country <- "France"
+GBtrend$country <- "United Kingdom"
+INtrend$country <- "India"
+JPtrend$country <- "Japan"
+KRtrend$country <- "Korea"
+MXtrend$country <- "Mexico"
+RUtrend$country <- "Russia"
+UStrend$country <- "United States"
+
+YoutubeTrending <- rbind(CAtrend, DEtrend, FRtrend, GBtrend, INtrend, JPtrend, KRtrend, MXtrend, RUtrend, UStrend)
+```
+I omitted some unneeded columns and did some mutations so that each row represents each video's data on a country's trending. Some videos appear more than once because they get into multiple countries' trend ranking. Since I am taking likes, dislikes, and comment count into consideration, and about 96.6% of data is comment enabled and ratings enabled, I decided to not include the comment and ratings disabled data. 
+```{r create YoutubeSub, echo = FALSE, warning = FALSE, message = FALSE}
+# Change date column into yyyy-mm-dd form
+YoutubeTrending$trending_date <- gsub("\\.","-",YoutubeTrending$trending_date)
+YoutubeTrending$trending_date <- ydm(YoutubeTrending$trending_date)
+YoutubeTrending$trending_date <- ymd(YoutubeTrending$trending_date)
+YoutubeTrending$publish_time <- gsub("T", " ", YoutubeTrending$publish_time)
+YoutubeTrending$publish_time <- gsub(".000Z", "", YoutubeTrending$publish_time)
+YoutubeTrending$comments_disabled <- gsub("FALSE","False",YoutubeTrending$comments_disabled)
+YoutubeTrending$comments_disabled <- gsub("TRUE","True",YoutubeTrending$comments_disabled)
+YoutubeTrending$ratings_disabled <- gsub("FALSE","False",YoutubeTrending$ratings_disabled)
+YoutubeTrending$ratings_disabled <- gsub("TRUE","True",YoutubeTrending$ratings_disabled)
+YoutubeTrending$video_error_or_removed <- gsub("FALSE","False",YoutubeTrending$video_error_or_removed)
+YoutubeTrending$video_error_or_removed <- gsub("TRUE","True",YoutubeTrending$video_error_or_removed)
+
+# omit the variables that not going to use
+YoutubeTrending <- YoutubeTrending[,c(17,18,2,3,5,6,7,8,9,10,11,13,14,15)]
+YoutubeTrending <- distinct(YoutubeTrending)
+
+# Add a column showing days trend
+TrendDays <- YoutubeTrending %>%
+  count(country, video_id) %>%
+  filter(video_id!="#NAME?")
+
+colnames(TrendDays)[3] <- "trend_days"
+
+YoutubeTrending <- right_join(YoutubeTrending, TrendDays, by=c("video_id", "country"))
+
+write.csv(YoutubeTrending, "YoutubeTrending.csv")
+
+# print("Total number of observations: ")
+# n <- count(YoutubeTrending)
+# print(n)
+# cat("\n")
+# print("Number of observations with comments and ratings enabled: ")
+# n1 <- count(filter(YoutubeTrending, YoutubeTrending$comments_disabled=="False" & YoutubeTrending$ratings_disabled=="False"))
+# print(n1)
+# cat("\n")
+# print("Comments and ratings enabled observations rate: ")
+# print(n1/n)
+
+# Create a YoutubeSub data frame
+YoutubeSub <- YoutubeTrending %>%
+  filter(comments_disabled=="False" & ratings_disabled=="False") %>%
+  group_by(video_id, country) %>%
+  arrange(trending_date) %>%
+  mutate(first_views=first(views)) %>%
+  mutate(first_likes=first(likes)) %>%
+  mutate(first_dislikes=first(dislikes)) %>%
+  mutate(first_comments=first(comment_count)) %>%
+  ungroup() %>%
+  dplyr::select(country, trend_days, category, first_views, 
+         first_likes, first_dislikes, first_comments) %>%
+  distinct()
+
+YoutubeSub <- na.omit(YoutubeSub)
+
+# summary(dplyr::select(YoutubeSub, -c(country, category))) %>%
+#   kable() %>%
+#   kable_styling()
+```
+Then I found that all numerical variables are extremely left-skewed, so I did a log transformation on them. I add a new column trend_longer indicates whether the video trend for more than one day.  
+```{r add log transformation, echo = FALSE, warning = FALSE, message = FALSE}
+YoutubeSub$trend_longer <- ""
+YoutubeSub$trend_longer[YoutubeSub$trend_days==1] <- 0
+YoutubeSub$trend_longer[YoutubeSub$trend_days>1] <- 1
+YoutubeSub$country <- factor(YoutubeSub$country)
+YoutubeSub$category <- factor(YoutubeSub$category)
+YoutubeSub$trend_longer <- factor(YoutubeSub$trend_longer)
+YoutubeSub$log_first_views <- log(YoutubeSub$first_views)
+YoutubeSub$log_first_likes <- log(YoutubeSub$first_likes+1)
+YoutubeSub$log_first_dislikes <- log(YoutubeSub$first_dislikes+1)
+YoutubeSub$log_first_comments <- log(YoutubeSub$first_comments+1)
+YoutubeSub <- dplyr::select(YoutubeSub, c(country, category, trend_days, trend_longer:log_first_comments))
+write.csv(YoutubeSub, "YoutubeSub.csv")
+summary(dplyr::select(YoutubeSub, -c(country, category, trend_longer))) %>%
+  kable() %>%
+  kable_styling()
+```
+
+
+## EDA
+```{r video distribution, echo = FALSE, warning = FALSE, message = FALSE, fig.cap="Video distribution"}
+YoutubeSub %>%
+  group_by(country) %>%
+  mutate(n=n()) %>%
+  ungroup() %>%
+  ggplot(aes(fct_reorder(country,n), fill=category))+
+  geom_histogram(stat="count", color="black")+
+  labs(x="Country", y="Number of distinct videos")+
+  coord_flip()
+```
+
+From the graph we can see that Mexico has the largest number of distinct videos on trending, meaning that trending in Mexico updates very frequently and each video tends to trend very shortly. Videos in the United Kingdom tend to trend longer. Entertainment is the most popular category in most countries. 
+
+
+## Model
+$$ trend\;longer \sim $$ 
+$$log(first\,day's\,view\,counts) * log(first\,day's\,likes) * log(first\,day's\,dislikes) *$$  $$log(first\,day's\,comment\,counts) + (1|category) + (1|country) $$ 
+```{r fit model, echo = FALSE, warning = FALSE, message = FALSE}
+if (file.exists(("fit.rda"))) {
+  load(file="fit.rda")
+} else {
+  fit <- glmer(data=YoutubeSub, trend_longer~log_first_views*log_first_likes*log_first_dislikes*log_first_comments+(1|category)+(1|country), family=binomial(link="logit"))
+  save(fit, file="fit.rda")
+}
+```
+The multilevel binomial logistic model I use to predict trend_long, which means whether a video could keep trending on the second day, with predictors of log(first day's view counts), log(first day's likes), log(first day's dislikes) and log(first day's comment counts) and their interaction terms. The model has varying intercepts among category and country. 
+
+
+## Model Check
+I use a binned residual plot to assess the overall fit of my model. 
+```{r binned residual plot, echo = FALSE, warning = FALSE, message = FALSE, fig.cap="Binned residual plot", out.height="50%"}
+binned_residuals(fit)
+```
+
+There are a few outliers, but most of the residuals are within the confidence limits, and they do not show an obvious pattern.
+
+
+# Result
+First, let us take a look at the odds ratios for the fixed effects. 
+```{r fixed effect, echo = FALSE, warning = FALSE, message = FALSE}
+# sjPlot::tab_model(fit, file="fitReport.html")
+# htmltools::includeHTML("fitReport.html")
+```
+
+![fixed effct odds ratios]("fitReport.jpg"){height=50%}
+
+The fixed effect odds ratios tell us that if a video is viewed more and gets more dislikes on the first trend day, it is more likely to keep trending. If a video gets more likes and comments on the first trend day, it is less likely to keep trending. The interaction effects are not that significant. 
+
+
+```{r random effect, echo = FALSE, warning = FALSE, message = FALSE, fig.cap="Random effect odds ratios"}
+plot_grid(plot_model(fit, type="re"), tags=c("category", "country"))
+```
+
+
+The random effect odds ratios tell us that:
+
+- For category:
+
+  - Videos in these categories tend to trend for more than one day: travel & events, trailers, pets & animals, people & blogs, nonprofits & activism, music, movies, gaming, film & animation, entertainment, comedy.
+  
+  - Videos in these categories tend to trend for only one day: sports, science & technology, news & politics, howto & style, education, autos & vehicles.
+  
+  - Among these categories, travel & events videos are most likely to trend for more than one day, shows are least likely to trend for more than one day.
+  
+  - The effect of trailers, nonprofits & activism, and movies differ a lot in different countries.
+  
+- For country:
+
+  - Videos in these countries tend to trend for more than one day: United States, United Kingdom, Korea, India.
+  
+  - Videos in these countries tend to trend for more than one day: Russia, Mexico, Japan, Germany, France, Canada.
+  
+  - Among these countries, videos on the United Kingdom's trending are most likely to trend for more than one day, videos on Russia's trending are least likely to trend for more than one day. 
+  
+
+
+#  Discussion
+Other than multilevel binomial logistic regression, I tried several other models. I also tried different dependent variables because my initial purpose is to predict how long a video could trend. In the final version, I use trend_longer as the output. But trend_longer only shows if the video trend for more than 1 day. There are also lots of videos that trend for 2 or 3 days. I tried to use trend days as the dependent variable. I also tried to use multinomial logistic regression, with an output of 1 meaning that the video trend for 1 day, 2 meaning that the video trend for more than 1 day but within 7 days, And 3 meaning that video trend for more than a week. These tries have all failed because of the large number of videos that trend for only once. I tried to change my way of thinking to use log(final trend day's view count) as output. And the models run well. But the model itself is not helpful for me to analyze my problem. The numerical predictors in my model are all highly correlated, so I add interaction terms between each of them. But I think next time I should probably add more predictors. For example, I am doing sentiment analysis recently, so I could use the sentiment score for the description or the tags for the videos. 
+
+
+
+# Appendix
+```{r numerical data ggpairs, echo = FALSE, warning = FALSE, message = FALSE}
+if(!file.exists("plotGGpairs.jpg")){
+  plotGGpairs <- YoutubeSub %>%
+  dplyr::select(c(trend_days, log_first_views, log_first_likes, log_first_dislikes, log_first_comments)) %>%
+  ggpairs(lower=list(continuous=wrap("smooth", alpha=0.01)), diag=list(continuous=wrap("barDiag", bins=30)))
+  ggsave("plotGGpairs.jpg", plotGGpairs)
+} 
+```
+![numerical data ggpairs]("plotGGpairs.jpg")
+
+From the ggpair plot we can see that after log transformation, most of the numerical data seems to be more normalized. View count, likes, dislikes, and comment counts are highly correlated with each other. The left plots are not very clear because most videos trend for only one day. But we can still see that videos that trend longer tend to have a better performance on their first trend day. 
+
+Checking normality for random effects using Q-Q plot
+```{r qq plot, echo = FALSE, warning = FALSE, message = FALSE, fig.align="center"}
+plot_grid(plot_model(fit, type="diag"), tags=c("category", "country"))
+```
+Most of the points are close to the normality assumption line, but the tails deviate a little. 
+
+```{r check model, echo = FALSE, warning = FALSE, message = FALSE}
+performance::check_model(fit)
+```
+
+# Bibliography
+  - Alex Couture-Beil (2018). rjson: JSON for R. R package version 0.2.20. https://CRAN.R-project.org/package=rjson
+  - Andrew Gelman and Yu-Sung Su (2020). arm: Data Analysis Using Regression and Multilevel/Hierarchical Models. R package version 1.11-2. https://CRAN.R-project.org/package=arm
+  - Barret Schloerke, Di Cook, Joseph Larmarange, Francois Briatte, Moritz Marbach, Edwin Thoen, Amos Elberg and Jason Crowley (2020). GGally: Extension to 'ggplot2'. R package version 2.0.0. https://CRAN.R-project.org/package=GGally
+  - Douglas Bates and Martin Maechler (2019). Matrix: Sparse and Dense Matrix Classes and Methods. R package version 1.2-18. https://CRAN.R-project.org/package=Matrix
+  - Douglas Bates, Martin Maechler, Ben Bolker, Steve Walker (2015). Fitting Linear Mixed-Effects Models Using lme4. Journal of Statistical Software, 67(1), 1-48. doi:10.18637/jss.v067.i01.
+  - Garrett Grolemund, Hadley Wickham (2011). Dates and Times Made Easy with lubridate. Journal of Statistical Software, 40(3), 1-25. URL http://www.jstatsoft.org/v40/i03/.
+  - H. Wickham. ggplot2: Elegant Graphics for Data Analysis. Springer-Verlag New York, 2016.
+  - Hadley Wickham (2019). stringr: Simple, Consistent Wrappers for Common String Operations. R package version 1.4.0. https://CRAN.R-project.org/package=stringr
+  - Hadley Wickham (2020). forcats: Tools for Working with Categorical Variables (Factors). R package version 0.5.0. https://CRAN.R-project.org/package=forcats
+  - Hadley Wickham (2020). tidyr: Tidy Messy Data. R package version 1.1.2. https://CRAN.R-project.org/package=tidyr
+  - Hadley Wickham and Jim Hester (2020). readr: Read Rectangular Text Data. R package version 1.4.0. https://CRAN.R-project.org/package=readr
+  - Hadley Wickham, Romain François, Lionel Henry and Kirill Müller (2020). dplyr: A Grammar of Data Manipulation. R package version 1.0.2. https://CRAN.R-project.org/package=dplyr
+  - Hao Zhu (2020). kableExtra: Construct Complex Table with 'kable' and Pipe Syntax. R package version 1.3.1. https://CRAN.R-project.org/package=kableExtra
+  - Kirill Müller and Hadley Wickham (2020). tibble: Simple Data Frames. R package version 3.0.4. https://CRAN.R-project.org/package=tibble
+  - Lionel Henry and Hadley Wickham (2020). purrr: Functional Programming Tools. R package version 0.3.4. https://CRAN.R-project.org/package=purrr
+  - Lüdecke D (2020). _sjPlot: Data Visualization for Statistics in Social Science_. R package version2.8.6, <URL: https://CRAN.R-project.org/package=sjPlot>.
+  - Lüdecke, Makowski, Waggoner & Patil (2020). Assessment of Regression Models Performance. CRAN. Available from https://easystats.github.io/performance/
+  - Makowski, D., Lüdecke, D., & Ben-Shachar, M.S. (2020). Automated reporting as a practical tool to improve reproducibility and methodological best practices adoption. CRAN. Available from https://github.com/easystats/report. doi: .
+  - R Core Team (2020). R: A language and environment for statistical computing. R Foundation for Statistical Computing, Vienna, Austria. URL https://www.R-project.org/.
+  - Venables, W. N. & Ripley, B. D. (2002) Modern Applied Statistics with S. Fourth Edition. Springer, New York. ISBN 0-387-95457-0
+  - Wickham et al., (2019). Welcome to the tidyverse. Journal of Open Source Software, 4(43), 1686, https://doi.org/10.21105/joss.01686
+  - Yihui Xie (2020). knitr: A General-Purpose Package for Dynamic Report Generation in R. R package version 1.29.
+  - Yihui Xie (2020). tinytex: Helper Functions to Install and Maintain TeX Live, and Compile LaTeX Documents. R package version 0.27.
